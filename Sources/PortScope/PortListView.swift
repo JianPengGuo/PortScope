@@ -39,7 +39,7 @@ struct PortListView: View {
             Divider()
             footer
         }
-        .frame(width: 390, height: 470)
+        .frame(width: 370, height: 470)
         .confirmationDialog(
             "Stop \(store.pendingTermination?.processName ?? "process")?",
             isPresented: Binding(
@@ -78,6 +78,9 @@ struct PortListView: View {
                     Text("\(store.ports.count) TCP listeners")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text("Sorted by memory, then CPU")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
                 Spacer()
                 Button {
@@ -126,13 +129,20 @@ private struct PortRow: View {
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                 }
-                Text("PID \(port.processID)  ·  \(port.endpoint)")
+                Text("PID \(port.processID)")
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
             }
             Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 3) {
+                metric(label: "RAM", value: memoryDescription, color: memoryColor)
+                metric(label: "CPU", value: cpuDescription, color: cpuColor)
+            }
+            .font(.system(.caption2, design: .monospaced))
+            .lineLimit(1)
+            .help("CPU is averaged since the previous refresh and turns red at 100% of one core. RAM turns red at 10% of installed memory.")
+
             Button(action: onTerminate) {
                 Image(systemName: "stop.circle")
                     .font(.title3)
@@ -156,6 +166,36 @@ private struct PortRow: View {
             if port.isOwnedByCurrentUser {
                 Button("Stop process…", role: .destructive, action: onTerminate)
             }
+        }
+    }
+
+    private var memoryDescription: String {
+        guard let bytes = port.memoryBytes else { return "—" }
+        return ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .memory)
+    }
+
+    private var cpuDescription: String {
+        guard let percent = port.cpuPercent else { return "—" }
+        return String(format: "%.1f%%", percent)
+    }
+
+    private var memoryColor: Color {
+        guard let bytes = port.memoryBytes else { return .secondary }
+        let threshold = ProcessInfo.processInfo.physicalMemory / 10
+        return bytes >= threshold ? .red : .green
+    }
+
+    private var cpuColor: Color {
+        guard let percent = port.cpuPercent else { return .secondary }
+        return percent >= 100 ? .red : .green
+    }
+
+    private func metric(label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(color)
         }
     }
 }
