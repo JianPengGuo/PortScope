@@ -102,7 +102,7 @@ struct PortListView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Image(systemName: "checkmark.shield")
-            Text("Stops processes with confirmation · no admin access")
+            Text("System processes protected · stops require confirmation")
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
@@ -129,10 +129,20 @@ private struct PortRow: View {
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                 }
-                Text("PID \(port.processID)")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("PID \(port.processID)")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    if port.isProtected {
+                        Label("Protected", systemImage: "lock.fill")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                            .lineLimit(1)
+                    }
+                }
             }
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 3) {
@@ -143,17 +153,26 @@ private struct PortRow: View {
             .lineLimit(1)
             .help("CPU is averaged since the previous refresh and turns red at 100% of one core. RAM turns red at 10% of installed memory.")
 
-            Button(action: onTerminate) {
-                Image(systemName: "stop.circle")
-                    .font(.title3)
-                    .foregroundStyle(port.isOwnedByCurrentUser ? .red : .secondary)
+            if !port.isProtected {
+                Button(action: onTerminate) {
+                    Image(systemName: "stop.circle")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .help("Stop process")
             }
-            .buttonStyle(.borderless)
-            .disabled(!port.isOwnedByCurrentUser)
-            .help(port.isOwnedByCurrentUser ? "Stop process" : "Owned by another user")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if !port.isProtected {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.accentColor.opacity(0.07))
+                    .padding(.horizontal, 5)
+            }
+        }
         .contextMenu {
             Button("Copy endpoint") {
                 NSPasteboard.general.clearContents()
@@ -163,7 +182,7 @@ private struct PortRow: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString("http://localhost:\(port.port)", forType: .string)
             }
-            if port.isOwnedByCurrentUser {
+            if !port.isProtected {
                 Button("Stop process…", role: .destructive, action: onTerminate)
             }
         }

@@ -11,6 +11,7 @@ A small native macOS menu bar app for seeing which process is listening on each 
 - Shows each listener process's physical memory footprint and recent CPU usage, sorted by memory then CPU from highest to lowest. Values turn red at 10% of installed memory or 100% of one CPU core.
 - Copies endpoints and localhost URLs from each row's context menu.
 - Requests confirmation before sending `SIGTERM` to a process owned by your account.
+- Gives processes you can stop a subtle row tint. Protected processes have a plain background and lock label, with their Stop actions hidden. System executables, other users' processes, and processes whose executable path cannot be identified are protected.
 - Re-checks the PID and endpoint just before signaling; it never runs with administrator privileges.
 
 The first version does not include Docker controls, Kubernetes, Cloudflare, auto-kill rules, or force-kill. Those can be considered after the basic port list has been tried.

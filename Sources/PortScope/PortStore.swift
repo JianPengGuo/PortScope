@@ -8,11 +8,17 @@ struct ListeningPort: Identifiable, Hashable, Sendable {
     let userID: uid_t
     let endpoint: String
     let port: Int
+    var executablePath: String? = nil
     var memoryBytes: UInt64? = nil
     var cpuPercent: Double? = nil
 
     var id: String { "\(processID):\(endpoint)" }
     var isOwnedByCurrentUser: Bool { userID == getuid() }
+    var isProtected: Bool {
+        guard isOwnedByCurrentUser, let executablePath else { return true }
+        let systemDirectories = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/bin/", "/usr/bin/"]
+        return systemDirectories.contains { executablePath.hasPrefix($0) }
+    }
 }
 
 @MainActor
@@ -95,18 +101,24 @@ final class PortStore: ObservableObject {
     }
 
     func terminate(_ port: ListeningPort) {
-        guard port.isOwnedByCurrentUser else {
-            errorMessage = "PortScope only signals processes owned by your account."
+        guard !port.isProtected else {
+            errorMessage = "System processes, other users' processes, and processes whose executable cannot be identified are protected."
             return
         }
 
         // Re-check the PID/endpoint immediately before signaling to reduce the chance
         // of acting on a process that exited and whose PID was subsequently reused.
-        let stillListening = PortScanner.scan().contains {
+        let currentListener = PortScanner.scan().first {
             $0.processID == port.processID && $0.endpoint == port.endpoint
         }
-        guard stillListening else {
+        guard let currentListener else {
             errorMessage = "That listener has already exited. The list will refresh shortly."
+            return
+        }
+
+        guard !currentListener.isProtected,
+              currentListener.executablePath == port.executablePath else {
+            errorMessage = "The process identity or protection status changed. Refresh the list before trying again."
             return
         }
 
@@ -155,6 +167,17 @@ private enum ProcessUsageScanner {
 }
 
 private enum PortScanner {
+    private static func executablePath(for processID: Int32) -> String? {
+        // PROC_PIDPATHINFO_MAXSIZE is defined as 4 * MAXPATHLEN in proc_info.h,
+        // but that composite C macro is not imported into Swift.
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let length = buffer.withUnsafeMutableBytes {
+            proc_pidpath(processID, $0.baseAddress, UInt32($0.count))
+        }
+        guard length > 0 else { return nil }
+        return buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
+    }
+
     static func scan() -> [ListeningPort] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
@@ -179,6 +202,7 @@ private enum PortScanner {
     private static func parse(_ output: String) -> [ListeningPort] {
         var processID: Int32?
         var processName = "Unknown"
+        var processExecutablePath: String?
         var userID: uid_t = 0
         var results: [ListeningPort] = []
         var seen = Set<String>()
@@ -189,6 +213,7 @@ private enum PortScanner {
             switch field {
             case "p":
                 processID = Int32(value)
+                processExecutablePath = processID.flatMap { executablePath(for: $0) }
             case "c":
                 processName = value
             case "u":
@@ -204,7 +229,8 @@ private enum PortScanner {
                     processName: processName,
                     userID: userID,
                     endpoint: value,
-                    port: port
+                    port: port,
+                    executablePath: processExecutablePath
                 ))
             default:
                 continue
