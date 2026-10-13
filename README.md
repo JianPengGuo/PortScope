@@ -1,5 +1,7 @@
 # PortScope
 
+[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+
 A small native macOS menu bar app for seeing which process is listening on each TCP port.
 
 ## Current scope
